@@ -44,7 +44,6 @@ defmodule Hex.State do
       check_cert?:      load_config(config, ["HEX_UNSAFE_HTTPS"], :unsafe_https) |> to_boolean |> default(false) |> Kernel.not,
       check_registry?:  load_config(config, ["HEX_UNSAFE_REGISTRY"], :unsafe_registry) |> to_boolean |> default(false) |> Kernel.not,
       hexpm_pk:         @hexpm_pk,
-      registry_updated: false,
       httpc_profile:    :hex,
       ssl_version:      ssl_version(),
       pbkdf2_iters:     32768,
@@ -56,7 +55,10 @@ defmodule Hex.State do
   if Mix.env == :test do
     def fetch(:httpc_profile) do
       profile = make_ref() |> :erlang.ref_to_list |> List.to_atom
-      {:ok, _pid} = :httpc_manager.start_link(profile, :only_session_cookies, :stand_alone)
+      {:ok, pid} = :httpc_manager.start_link(profile, :only_session_cookies, :stand_alone)
+      # Unlink to avoid race conditions where the manager closes before all requests finished
+      Process.unlink(pid)
+      {:ok, pid}
     end
   end
 

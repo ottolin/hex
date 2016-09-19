@@ -86,7 +86,7 @@ defmodule Hex.Resolver do
   defp activate(request(app: app, name: name), pending, [version|versions],
                 optional, info, activated, parents) do
     {new_pending, new_optional, new_deps} = get_deps(app, name, version, info, activated)
-    new_pending = new_pending ++ pending
+    new_pending = pending ++ new_pending
     new_optional = merge_optional(optional, new_optional)
 
     state = state(activated: activated, requests: pending, optional: optional, deps: info(info, :deps))
@@ -134,7 +134,7 @@ defmodule Hex.Resolver do
   end
 
   defp get_versions(package, requests) do
-    if versions = Registry.get_versions(package) do
+    if versions = Registry.versions(package) do
       Enum.reduce(requests, versions, fn request, versions ->
         req = request(request, :req)
         Enum.filter(versions, &version_match?(&1, req))
@@ -146,7 +146,9 @@ defmodule Hex.Resolver do
   end
 
   defp get_deps(app, package, version, info(top_level: top_level, deps: all_deps), activated) do
-    if deps = Registry.get_deps(package, version) do
+    if deps = Registry.deps(package, version) do
+      dep_names = Enum.map(deps, &elem(&1, 0))
+      Registry.prefetch(dep_names)
       all_deps = attach_dep_and_children(all_deps, app, deps)
       overridden_map = overridden_parents(top_level, all_deps, app)
 
@@ -195,9 +197,9 @@ defmodule Hex.Resolver do
     # ugly hack to check if we should print the pre-release explanation
     if message =~ "*\n" do
       message <>
-        "\n* This requirement failed because by default pre-releases " <>
-        "are never matched. To match against pre-releases include " <>
-        "a pre-release in the requirement string: \"~> 2.0-beta\".\n"
+        "\n* This requirement does not match pre-releases. " <>
+        "To match pre-releases include a pre-release in the " <>
+        "requirement, such as: \"~> 2.0-beta\".\n"
     else
       message
     end

@@ -1,58 +1,64 @@
 defmodule Hex.RegistryTest do
   use HexTest.Case
+  alias Hex.Registry.Server
 
-  test "stat" do
-    Hex.Registry.open!(Hex.Registry.ETS, registry_path: tmp_path("registry.ets"))
-    assert Hex.Registry.stat == {18, 46}
-    assert Hex.Registry.close == true
+  defp bypass_csv(versions) do
+    bypass = Bypass.open
+    Hex.State.put(:repo, "http://localhost:#{bypass.port}")
 
-    # Multiple open and close should yield the same result
-    Hex.Registry.open!(Hex.Registry.ETS, registry_path: tmp_path("registry.ets"))
-    assert Hex.Registry.stat == {18, 46}
-    assert Hex.Registry.close == true
+    Bypass.expect(bypass, fn %Plug.Conn{request_path: "/installs/hex-1.x.csv"} = conn ->
+      Plug.Conn.resp(conn, 200, versions_to_csv(versions))
+    end)
+
+    bypass
   end
 
-  test "install info, find correct version" do
-    in_tmp fn ->
-      Hex.State.put(:registry_updated, false)
-      Hex.State.put(:home, System.cwd!)
-
-      path = "registry.ets"
-      versions = [{"100.0.0", ["100.0.0"]}, {"0.0.1", ["0.0.1"]}, {"99.0.0", ["0.0.1"]},
-                  {"100.0.0", ["0.0.1"]}, {"98.0.0", ["0.0.1"]}]
-      create_registry(path, 3, versions, [], [])
-
-      Hex.Registry.close
-      Hex.Utils.ensure_registry!(fetch: false)
-      assert_received {:mix_shell, :info, ["\e[33mA new Hex version is available (100.0.0), please update with `mix local.hex`\e[0m"]}
-    end
+  defp versions_to_csv(versions) do
+    Enum.map_join(versions, "\n", fn {hex, elixir} ->
+      "#{hex},DIGEST,#{elixir}"
+    end)
   end
 
-  test "install info, too new elixir" do
-    in_tmp fn ->
-      Hex.State.put(:registry_updated, false)
-      Hex.State.put(:home, System.cwd!)
+  test "display new hex version" do
+    flush()
+    bypass_csv([{"100.0.0", "1.0.0"}])
+    {:ok, server} = Server.start_link(name: false)
 
-      path = "registry.ets"
-      versions = [{"100.0.0", ["100.0.0"]}]
-      create_registry(path, 3, versions, [], [])
-
-      Hex.Utils.ensure_registry!(fetch: false)
-      refute_received {:mix_shell, :info, ["A new Hex version is available" <> _]}
-    end
+    Server.open(server, registry_path: tmp_path(test_name() <> ".ets"))
+    Server.close(server)
+    assert_received {:mix_shell, :info, ["\e[33mA new Hex version is available" <> _]}
   end
 
-  test "install info, too old hex" do
-    in_tmp fn ->
-      Hex.State.put(:registry_updated, false)
-      Hex.State.put(:home, System.cwd!)
+  test "dont display same hex version" do
+    flush()
+    bypass_csv([{"0.0.1", "1.0.0"}])
+    {:ok, server} = Server.start_link(name: false)
 
-      path = "registry.ets"
-      versions = [{"0.0.1", ["0.0.1"]}]
-      create_registry(path, 3, versions, [], [])
+    Server.open(server, registry_path: tmp_path(test_name() <> ".ets"))
+    Server.close(server)
+    refute_received {:mix_shell, :info, ["\e[33mA new Hex version is available" <> _]}
+  end
 
-      Hex.Utils.ensure_registry!(fetch: false)
-      refute_received {:mix_shell, :info, ["A new Hex version is available" <> _]}
-    end
+  test "dont display new hex version for too new elixir" do
+    flush()
+    bypass_csv([{"100.0.0", "100.0.0"}])
+    {:ok, server} = Server.start_link(name: false)
+    Server.open(server, registry_path: tmp_path(test_name() <> ".ets"))
+    Server.close(server)
+    refute_received {:mix_shell, :info, ["\e[33mA new Hex version is available" <> _]}
+  end
+
+  test "only check version once" do
+    flush()
+    bypass_csv([{"100.0.0", "1.0.0"}])
+    {:ok, server} = Server.start_link(name: false)
+
+    Server.open(server, registry_path: tmp_path(test_name() <> "1.ets"))
+    Server.close(server)
+    assert_received {:mix_shell, :info, ["\e[33mA new Hex version is available" <> _]}
+
+    Server.open(server, registry_path: tmp_path(test_name() <> "2.ets"))
+    Server.close(server)
+    refute_received {:mix_shell, :info, ["\e[33mA new Hex version is available" <> _]}
   end
 end

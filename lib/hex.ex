@@ -14,6 +14,7 @@ defmodule Hex do
 
   def start(_, _) do
     import Supervisor.Spec
+    dev_setup()
 
     Mix.SCM.append(Hex.SCM)
     Mix.RemoteConverger.register(Hex.RemoteConverger)
@@ -23,7 +24,7 @@ defmodule Hex do
 
     children = [
       worker(Hex.State, []),
-      worker(Hex.Registry.ETS, []),
+      worker(Hex.Registry.Server, []),
       worker(Hex.Parallel, [:hex_fetcher, [max_parallel: 64]]),
     ]
 
@@ -35,7 +36,7 @@ defmodule Hex do
   def elixir_version, do: unquote(System.version)
   def otp_version,    do: unquote(Hex.Utils.otp_version)
 
-  defp start_httpc() do
+  defp start_httpc do
     :inets.start(:httpc, profile: :hex)
     opts = [
       max_sessions: 8,
@@ -45,5 +46,19 @@ defmodule Hex do
       pipeline_timeout: 60_000
     ]
     :httpc.set_options(opts, :hex)
+  end
+
+  if Mix.env in [:dev, :test] do
+    defp dev_setup do
+      :erlang.system_flag(:backtrace_depth, 20)
+    end
+  else
+    defp dev_setup, do: :ok
+  end
+
+  if Version.compare(System.version, "1.3.0") == :lt do
+    def string_to_charlist(string), do: String.to_char_list(string)
+  else
+    def string_to_charlist(string), do: String.to_charlist(string)
   end
 end

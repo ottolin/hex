@@ -186,13 +186,11 @@ defmodule Hex.Resolver.Backtracks do
   end
 
   defp parent_message({parent(name: "mix.lock", version: [], requirement: req), {color, pre_failed?}}) do
-    ["Locked to ", color, requirement(req), :reset, " in your mix.lock",
-     pre_message(pre_failed?)]
+    [:bright, "mix.lock", :reset, " specifies ", color, requirement(req), :reset, pre_message(pre_failed?)]
   end
 
   defp parent_message({parent(name: "mix.exs", version: [], requirement: req), {color, pre_failed?}}) do
-    ["You specified ", color, requirement(req), :reset, " in your mix.exs",
-     pre_message(pre_failed?)]
+    [:bright, "mix.exs", :reset, " specifies ", color, requirement(req), :reset, pre_message(pre_failed?)]
   end
 
   defp parent_message({parent(name: name, version: versions, requirement: req), {color, pre_failed?}}) do
@@ -228,7 +226,7 @@ defmodule Hex.Resolver.Backtracks do
 
   defp parent_reason(nil, _child, _versions), do: nil
   defp parent_reason(parent, child, []) do
-    versions = Hex.Registry.get_versions(child)
+    versions = Hex.Registry.versions(child)
     parent_reason(parent, child, versions)
   end
   defp parent_reason(parent(requirement: req), _child, versions) do
@@ -274,7 +272,7 @@ defmodule Hex.Resolver.Backtracks do
 
   defp merge_versions?(_package, []), do: false
   defp merge_versions?(package, versions) do
-    all_versions = Hex.Registry.get_versions(package)
+    all_versions = Hex.Registry.versions(package)
     sub_range?(all_versions, versions)
   end
 
